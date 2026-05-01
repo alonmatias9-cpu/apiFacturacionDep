@@ -70,6 +70,8 @@ function App() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -83,30 +85,68 @@ function App() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleEditClick = (customer) => {
+    setIsEditMode(true);
+    setEditingCustomerId(customer.id);
+    setFormData({
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      email: customer.email,
+      document_number: customer.document_number,
+      address: customer.address || ''
+    });
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const response = await axios.post('http://localhost:8000/api/customers/', formData);
-      if (response.data.success || response.status === 201 || response.status === 200) {
-        const newCustomer = response.data.data || { 
+      if (isEditMode) {
+        // Update existing customer
+        const response = await axios.patch(`http://localhost:8000/api/customers/${editingCustomerId}/`, formData);
+        if (response.data.success || response.status === 200) {
+          const updatedCustomer = response.data.data || { 
+            id: editingCustomerId, 
+            created_at: customers.find(c => c.id === editingCustomerId)?.created_at,
+            updated_at: new Date().toISOString(),
+            ...formData 
+          };
+          setCustomers(prev => prev.map(c => c.id === editingCustomerId ? updatedCustomer : c));
+          setIsModalOpen(false);
+          setIsEditMode(false);
+          setEditingCustomerId(null);
+          setFormData({ first_name: '', last_name: '', email: '', document_number: '', address: '' });
+        }
+      } else {
+        // Create new customer
+        const response = await axios.post('http://localhost:8000/api/customers/', formData);
+        if (response.data.success || response.status === 201 || response.status === 200) {
+          const newCustomer = response.data.data || { 
+            id: customers.length + 10, 
+            created_at: new Date().toISOString(), 
+            ...formData 
+          };
+          setCustomers(prev => [newCustomer, ...prev]);
+          setIsModalOpen(false);
+          setFormData({ first_name: '', last_name: '', email: '', document_number: '', address: '' });
+        }
+      }
+    } catch (err) {
+      console.error("API error, fallback to local update.");
+      if (isEditMode) {
+        setCustomers(prev => prev.map(c => c.id === editingCustomerId ? { ...c, ...formData } : c));
+      } else {
+        const newCustomer = { 
           id: customers.length + 10, 
           created_at: new Date().toISOString(), 
           ...formData 
         };
         setCustomers(prev => [newCustomer, ...prev]);
-        setIsModalOpen(false);
-        setFormData({ first_name: '', last_name: '', email: '', document_number: '', address: '' });
       }
-    } catch (err) {
-      console.error("API error, fallback to appending mock data locally.");
-      const newCustomer = { 
-        id: customers.length + 10, 
-        created_at: new Date().toISOString(), 
-        ...formData 
-      };
-      setCustomers(prev => [newCustomer, ...prev]);
       setIsModalOpen(false);
+      setIsEditMode(false);
+      setEditingCustomerId(null);
       setFormData({ first_name: '', last_name: '', email: '', document_number: '', address: '' });
     } finally {
       setIsSubmitting(false);
@@ -335,7 +375,7 @@ function App() {
                       </td>
                       <td>
                         <div className="action-btns" style={{ justifyContent: 'flex-end' }}>
-                          <button className="action-btn" title="Edit Customer">
+                          <button className="action-btn" title="Edit Customer" onClick={() => handleEditClick(customer)}>
                             <Edit2 size={18} />
                           </button>
                           <button className="action-btn delete" title="Delete Customer">
@@ -385,8 +425,13 @@ function App() {
               transition={{ type: "spring", duration: 0.5 }}
             >
               <div className="modal-header">
-                <h2>Add New Customer</h2>
-                <button className="close-btn" onClick={() => setIsModalOpen(false)}>
+                <h2>{isEditMode ? 'Edit Customer' : 'Add New Customer'}</h2>
+                <button className="close-btn" onClick={() => {
+                  setIsModalOpen(false);
+                  setIsEditMode(false);
+                  setEditingCustomerId(null);
+                  setFormData({ first_name: '', last_name: '', email: '', document_number: '', address: '' });
+                }}>
                   <X size={24} />
                 </button>
               </div>
@@ -416,12 +461,17 @@ function App() {
                   <input type="text" name="address" className="form-input" value={formData.address} onChange={handleInputChange} placeholder="123 Main St, City" />
                 </div>
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-outline" onClick={() => setIsModalOpen(false)}>
+                  <button type="button" className="btn btn-outline" onClick={() => {
+                    setIsModalOpen(false);
+                    setIsEditMode(false);
+                    setEditingCustomerId(null);
+                    setFormData({ first_name: '', last_name: '', email: '', document_number: '', address: '' });
+                  }}>
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
                     {isSubmitting ? <Loader2 className="spinner" size={18} /> : <Save size={18} />}
-                    {isSubmitting ? 'Saving...' : 'Save Customer'}
+                    {isSubmitting ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update Customer' : 'Save Customer')}
                   </button>
                 </div>
               </form>
